@@ -164,9 +164,14 @@ fit_coach/
 | 层级 | 内容 | 结果 |
 | --- | --- | --- |
 | 单元测试 | `tests/test_fc_count.c`：阈值边界/迟滞/抖动/漏帧/标签去抖/会话重置 | 24/24 通过 |
-| 服务器 | mock 模式端到端（角度演进、时间戳回显、健康检查） | 通过 |
+| 服务器端到端 | 真 MediaPipe：无人帧/真人帧/坏帧/时间戳回显 + 30 帧压测 | 10/10，p95=121ms |
+| 全链路闭环 | 90 秒 300 帧（设备同款 300ms 节流）→ HTTP → **真实设备计数内核** | 计数正确 |
 | 模拟器 | 页面流转/演示计数/像素断言（`check_flow.py`） | 全部通过 |
 | 固件 | `fit_coach.bin` 1.87MB 构建通过（ESP-IDF 7b9cc1a） | ✅ |
+
+联调脚本：`tools/fit_coach/test_server_e2e.py`（服务器端到端）、
+`tools/fit_coach/test_closed_loop.py`（含真实计数内核的闭环）。
+真机测试步骤见 **[docs/DEVICE-TEST.md](docs/DEVICE-TEST.md)**。
 
 ## 许可
 

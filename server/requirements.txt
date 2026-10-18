@@ -1,6 +1,8 @@
-# 需求文档坑位：mediapipe 必须 0.9.x（新版无 mp.solutions）
-mediapipe==0.9.1.0
+# 需求文档基线：Python 3.8~3.11 用 mediapipe==0.9.1.0（锁旧版，新版移除 mp.solutions）。
+# Python 3.12 没有旧版 wheel，用仍保留 mp.solutions 旧 API 的 0.10.14（已实测可用）。
+mediapipe==0.9.1.0 ; python_version < "3.12"
+mediapipe==0.10.14 ; python_version >= "3.12"
 opencv-python
-numpy
+numpy<2
 fastapi
 uvicorn

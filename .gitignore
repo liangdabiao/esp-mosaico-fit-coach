@@ -8,6 +8,11 @@ managed_components/
 # Test artifacts
 tests/*.exe
 tests/*.o
+tests/*.dll
+
+# Server runtime
+server/venv/
+server/test_*.jpg
 
 # Python
 __pycache__/

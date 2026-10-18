@@ -89,10 +89,16 @@ _detector: PoseDetector | None = None
 
 
 def _decode_jpeg(data: bytes):
-    """JPEG 字节 -> BGR 图像；mediapipe 链路的 numpy 在此延迟引入。"""
+    """JPEG 字节 -> BGR 图像；空/坏数据返回 None（统一走 400）。
+    mediapipe 链路的 numpy 在此延迟引入。"""
+    if not data:
+        return None
     import numpy as np
 
-    return cv2.imdecode(np.frombuffer(data, dtype="uint8"), cv2.IMREAD_COLOR)
+    try:
+        return cv2.imdecode(np.frombuffer(data, dtype="uint8"), cv2.IMREAD_COLOR)
+    except cv2.error:
+        return None
 
 
 def get_detector() -> PoseDetector | None:

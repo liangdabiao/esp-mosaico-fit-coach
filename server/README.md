@@ -3,15 +3,30 @@
 设备把 JPEG 帧推给 `POST /frame`，服务器用 MediaPipe（需求文档同款算法）
 回传肩-髋-膝角度与状态；计数在设备端完成，服务器无状态、可随意重启。
 
-## 依赖（Python 3.8~3.11；mediapipe 0.9.x 不支持更新的 Python）
+## 一键启动（推荐，Windows）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File server\start_server.ps1        # 真 MediaPipe
+powershell -ExecutionPolicy Bypass -File server\start_server.ps1 -Mock  # 正弦模拟
+```
+
+首次运行自动创建 venv 并安装依赖；启动后打印设备配网要填的地址。
+若设备连不上，按提示用**管理员** PowerShell 放行一次 8000 端口：
+
+```powershell
+netsh advfirewall firewall add rule name="fit-coach 8000" dir=in action=allow protocol=TCP localport=8000
+```
+
+## 依赖（Python 3.8~3.11：mediapipe==0.9.1.0；Python 3.12：mediapipe==0.10.14）
+
+requirements.txt 已按 Python 版本自动选择（两者都保留 `mp.solutions` 旧 API，
+后者已在 Windows + Python 3.12 实测通过：真图识别 10/10、30 帧压测 p95=121ms）。
 
 ```sh
 python -m venv venv
 venv\Scripts\activate          # Windows
 pip install -r requirements.txt
 ```
-
-⚠️ mediapipe 必须锁 `0.9.1.0`（新版移除 `mp.solutions`，需求文档坑位）。
 
 ## 本机 / 局域网盒子
 
