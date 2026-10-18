@@ -1,0 +1,8 @@
+{
+  "events": [
+    {"frame": 6,   "type": "tap", "track_id": 0, "x": 240, "y": 272},
+    {"frame": 320, "type": "tap", "track_id": 0, "x": 355, "y": 430},
+    {"frame": 330, "type": "tap", "track_id": 0, "x": 345, "y": 365},
+    {"frame": 340, "type": "tap", "track_id": 0, "x": 250, "y": 430}
+  ]
+}

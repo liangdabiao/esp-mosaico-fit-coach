@@ -1,0 +1,6 @@
+# 需求文档坑位：mediapipe 必须 0.9.x（新版无 mp.solutions）
+mediapipe==0.9.1.0
+opencv-python
+numpy
+fastapi
+uvicorn

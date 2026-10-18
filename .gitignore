@@ -1,0 +1,23 @@
+# Build outputs
+build/
+build-host/
+.codex-runs/
+sdkconfig
+managed_components/
+
+# Test artifacts
+tests/*.exe
+tests/*.o
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

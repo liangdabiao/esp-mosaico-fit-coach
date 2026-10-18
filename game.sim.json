@@ -1,0 +1,14 @@
+{
+  "schema": "mosaico-game-sim/v1",
+  "sources": [
+    "main/fc_settings.c",
+    "main/game_module.c",
+    "main/game.c",
+    "main/fc_count.c",
+    "main/fc_demo.c",
+    "main/fc_store_host.c",
+    "main/fc_time_host.c",
+    "main/fc_sfx_host.c",
+    "main/gk_cjk_font.c"
+  ]
+}

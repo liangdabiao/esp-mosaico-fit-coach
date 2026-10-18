@@ -1,0 +1,22 @@
+dependencies:
+  idf: ">=6.2"
+  georgik/raylib: "==6.0.0~2"
+  # esp-gsp 1.5.1 is no longer downloadable from the CDN (403); build from the
+  # verified local clone (see AGENTS.md Environment and builds).
+  espressif/esp-gsp:
+    version: "==1.5.1"
+    override_path: "../../../weiqi-solution/dev/esp-gsp"
+  # Required by the engine's shared Raylib asset API, even without game assets.
+  espressif/esp_mmap_assets: "^2.0.0"
+  esp-mosaico-bsp:
+    version: "*"
+    override_path: "../../../submodule/esp-mosaico-bsp/components/esp-mosaico-bsp"
+  # Camera subboard module (DVP SC101IOT/OV3640), same wiring as BSP examples.
+  mosaico_module_camera:
+    version: "*"
+    override_path: "../../../submodule/esp-mosaico-bsp/components/mosaico_module_camera"
+  esp_iris:
+    version: "*"
+    override_path: "../../../submodule/esp-mosaico-utils/ESP-Iris/components/esp_iris"
+  # Match the BSP display adapter's supported LVGL headers.
+  lvgl/lvgl: "==9.5.0"
