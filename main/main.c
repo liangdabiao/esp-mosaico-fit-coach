@@ -2,7 +2,9 @@
 #define GSP_BUNDLE_ENABLE_RAW_IDS 1
 #include "bundle_gsp.h"
 #include "esp_check.h"
+#include "esp_log.h"
 #include "fc_runtime.h"
+#include "fc_sfx.h"
 #include "game.h"
 #include "game_config.h"
 #include "mosaico_game_app.h"
@@ -44,6 +46,10 @@ void app_main(void)
 {
     const game_config_t config = {GAME_WIDTH, GAME_HEIGHT};
     ESP_ERROR_CHECK(game_create(&config, &s_game) ? ESP_OK : ESP_ERR_NO_MEM);
+    /* 音效失败不致命（静音继续）。 */
+    if (fc_sfx_start() != 0) {
+        ESP_LOGW("fit_coach", "sfx unavailable; continuing silent");
+    }
     /* 设备侧服务：WiFi/配网、摄像头、姿态 provider。失败不致命——应用
      * 以演示模式继续运行，并在训练页显示链路状态。 */
     fc_runtime_start(s_game);

@@ -18,6 +18,7 @@
 #include "freertos/task.h"
 #include "lwip/ip4_addr.h"
 #include "nvs.h"
+#include "nvs_flash.h"
 
 #include "fc_store.h"
 
@@ -143,10 +144,16 @@ static void start_portal(void)
     if (s_portal) return;
     ESP_LOGI(TAG, "starting provisioning portal");
 
+    /* 网络失败绝不 abort（曾在引擎/NVS 就绪前初始化 WiFi 导致启动
+     * abort→回滚 recovery，core dump 定位于此）：全部软失败，只记日志。 */
     esp_netif_create_default_wifi_ap();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    esp_err_t err = esp_wifi_init(&cfg);
+    if (err == ESP_OK) err = esp_wifi_set_mode(WIFI_MODE_AP);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "portal wifi init failed: %s", esp_err_to_name(err));
+        return;
+    }
 
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
@@ -157,8 +164,12 @@ static void start_portal(void)
     wifi.ap.channel = FC_AP_CHANNEL;
     wifi.ap.max_connection = 2;
     wifi.ap.authmode = WIFI_AUTH_OPEN;
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    err = esp_wifi_set_config(WIFI_IF_AP, &wifi);
+    if (err == ESP_OK) err = esp_wifi_start();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "portal wifi start failed: %s", esp_err_to_name(err));
+        return;
+    }
 
     httpd_config_t http = HTTPD_DEFAULT_CONFIG();
     if (httpd_start(&s_portal, &http) == ESP_OK) {
@@ -197,18 +208,30 @@ static void sta_connect(const fc_settings_t *settings)
     s_state = FC_NET_CONNECTING;
     esp_netif_create_default_wifi_sta();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED,
-                                               on_ip_event, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
-                                               on_ip_event, NULL));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-
-    wifi_config_t wifi = {0};
-    snprintf((char *)wifi.sta.ssid, sizeof(wifi.sta.ssid), "%s", settings->wifi_ssid);
-    snprintf((char *)wifi.sta.password, sizeof(wifi.sta.password), "%s", settings->wifi_pass);
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    /* 软失败：任何一步失败都回退门户/演示，绝不 abort。 */
+    esp_err_t err = esp_wifi_init(&cfg);
+    if (err == ESP_OK) {
+        err = esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED,
+                                         on_ip_event, NULL);
+    }
+    if (err == ESP_OK) {
+        err = esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
+                                         on_ip_event, NULL);
+    }
+    if (err == ESP_OK) err = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (err == ESP_OK) {
+        wifi_config_t wifi = {0};
+        snprintf((char *)wifi.sta.ssid, sizeof(wifi.sta.ssid), "%s", settings->wifi_ssid);
+        snprintf((char *)wifi.sta.password, sizeof(wifi.sta.password), "%s",
+                 settings->wifi_pass);
+        err = esp_wifi_set_config(WIFI_IF_STA, &wifi);
+        if (err == ESP_OK) err = esp_wifi_start();
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "sta wifi init failed: %s", esp_err_to_name(err));
+        start_portal();
+        return;
+    }
     esp_wifi_connect();
 
     /* 30 秒拿不到 IP → 开门户让用户重配。 */
@@ -229,8 +252,30 @@ esp_err_t fc_net_start(void)
 {
     if (s_started) return ESP_OK;
     s_started = true;
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+    /* WiFi 依赖 NVS（校准数据）；引擎可能已初始化，这里幂等补一枪，
+     * 擦除-重试只在首次分区升级场景出现。 */
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGW(TAG, "nvs erase-retry: %s", esp_err_to_name(err));
+        nvs_flash_erase();
+        err = nvs_flash_init();
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "nvs init failed: %s (demo mode continues)", esp_err_to_name(err));
+        return err;
+    }
+
+    err = esp_netif_init();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "netif init failed: %s", esp_err_to_name(err));
+        return err;
+    }
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "event loop failed: %s", esp_err_to_name(err));
+        return err;
+    }
     s_events = xEventGroupCreate();
     if (!s_events) return ESP_ERR_NO_MEM;
 

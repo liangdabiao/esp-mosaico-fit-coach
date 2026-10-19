@@ -121,6 +121,18 @@ static void runtime_task(void *arg)
     (void)arg;
     uint32_t last_feed_ms = 0;
 
+    /* 网络启动推迟到引擎就绪之后（3s）：WiFi 依赖 NVS/事件循环，引擎链路
+     * 启动顺序竞态曾导致 app_main 阶段 abort（core dump 定位于
+     * start_portal 的 esp_wifi_init）。 */
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    {
+        const esp_err_t err = fc_net_start();
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "net start failed: %s (demo mode continues)",
+                     esp_err_to_name(err));
+        }
+    }
+
     while (s_rt.running) {
         const fc_settings_t *s = game_settings_view(s_rt.game);
         if (s) {
@@ -185,12 +197,6 @@ esp_err_t fc_runtime_start(game_handle_t game)
     s_rt.game = game;
     s_rt.running = true;
     s_rt.provider_healthy = true;
-
-    esp_err_t err = fc_net_start();
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "net start failed: %s (demo mode continues)",
-                 esp_err_to_name(err));
-    }
 
     if (xTaskCreate(runtime_task, "fc_rt", FC_RUNTIME_STACK, NULL, 5, &s_rt.task) !=
         pdPASS) {
