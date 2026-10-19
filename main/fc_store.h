@@ -22,10 +22,16 @@ extern "C" {
 #define FC_MODEL_MAX 32
 #define FC_KEY_MAX 72
 
+/* 语音报数模式。 */
+#define FC_VOICE_OFF 0
+#define FC_VOICE_EVERY 1
+#define FC_VOICE_FIFTH 2
+
 typedef struct {
     uint8_t mode;              /* FC_MODE_* */
     uint8_t target_reps;       /* 每组目标个数 */
     uint8_t sound_on;          /* 1 开 / 0 关 */
+    uint8_t voice_mode;        /* FC_VOICE_*：训练中的语音反馈 */
     int16_t up_thresh;         /* 躺平阈值（度） */
     int16_t down_thresh;       /* 坐起阈值（度） */
     char server_url[FC_URL_MAX];   /* MediaPipe 服务器，如 http://192.168.1.10:8000 */

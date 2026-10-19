@@ -16,6 +16,8 @@
 #include "fc_sfx.h"
 #include "fc_store.h"
 #include "fc_time.h"
+#include "fc_voice.h"
+#include "fc_voice_clips.h"
 #include "gk_cjk_font.h"
 #include "mosaico_raylib_fast.h"
 
@@ -46,6 +48,9 @@ typedef struct {
     uint32_t session_end_ms;
     bool paused;
     bool target_hit;       /* 本组达标提示已触发 */
+    bool halfway_fired;    /* 过半程鼓励已触发 */
+    bool five_left_fired;  /* 还差五个已触发 */
+    bool no_signal_fired;  /* 无信号提示已触发（回到镜头即重置） */
     bool confirm_reset;    /* 设置页「重置网络」二次确认 */
     uint32_t last_sample_tick; /* 最近收到真实样本的 tick（无信号判定） */
     /* 点击沿检测（单实例足够；设备与模拟器各只建一个 game） */
@@ -195,6 +200,40 @@ static const char *link_name(uint8_t link)
     }
 }
 
+/* ---------------- 语音反馈 ---------------- */
+
+/* 运动者躺着看屏幕：训练中的反馈主通道是语音（fc_voice），提示音只是
+ * 语音不可用/静音模式时的回退。宿主上 fc_voice 不可用，行为退化为哔声。 */
+static bool voice_enabled(const game_t *g)
+{
+    return g->settings.sound_on && g->settings.voice_mode != FC_VOICE_OFF &&
+           fc_voice_available();
+}
+
+static void voice_num(int n)
+{
+    if (n >= FC_CLIP_NUM_MIN && n <= FC_CLIP_NUM_MAX) fc_voice_play(n);
+}
+
+/* 完成一次后的反馈：语音报数（模式决定每个/每5个）或提示音。 */
+static void announce_rep(game_t *g, uint32_t reps)
+{
+    if (voice_enabled(g)) {
+        const int n = (reps <= (uint32_t)FC_CLIP_NUM_MAX) ? (int)reps : -1;
+        if (g->settings.voice_mode == FC_VOICE_EVERY) {
+            voice_num(n);
+            return;
+        }
+        if (g->settings.voice_mode == FC_VOICE_FIFTH) {
+            if (n >= 0 && n % 5 == 0) {
+                voice_num(n);
+                return;
+            }
+        }
+    }
+    if (g->settings.sound_on) fc_sfx_play(FC_TONE_REP);
+}
+
 /* ---------------- 会话与点击 ---------------- */
 
 static void session_begin(game_t *g)
@@ -204,10 +243,17 @@ static void session_begin(game_t *g)
     memset(&g->session, 0, sizeof(g->session));
     g->session.session_start_ms = fc_time_ms();
     g->session.session_start_tick = g->snap.tick;
+    g->session.last_sample_tick = g->snap.tick; /* 8 秒宽限后再提示无信号 */
     g->snap.reps = 0;
     g->snap.stage = FC_STAGE_UNKNOWN;
     g->snap.angle = -1;
     g->snap.session_ms = 0;
+    fc_voice_flush(); /* 上一组的残留不再播 */
+    if (voice_enabled(g)) {
+        fc_voice_play(FC_CLIP_TRAIN_START_PREFIX);
+        voice_num(g->settings.target_reps);
+        fc_voice_play(FC_CLIP_UNIT_GE);
+    }
 }
 
 static void session_finish(game_t *g)
@@ -217,6 +263,12 @@ static void session_finish(game_t *g)
     const uint16_t minutes = (uint16_t)((ms / 60000u) + ((ms % 60000u) ? 1 : 0));
     fc_store_history_append(fc_time_ymd(),
                             (uint16_t)fc_counter_stats(g->counter)->reps, minutes);
+    fc_voice_flush();
+    if (voice_enabled(g)) {
+        fc_voice_play(FC_CLIP_RESULT_PREFIX);
+        voice_num(fc_counter_stats(g->counter)->reps);
+        fc_voice_play(FC_CLIP_UNIT_GE);
+    }
 }
 
 static void settings_tap(game_t *g, int32_t x, int32_t y);
@@ -242,9 +294,18 @@ static void handle_tap(game_t *g, int32_t x, int32_t y)
     case FC_PAGE_TRAIN: {
         if (hit(x, y, 20, 400, 210, 60)) { /* 暂停/继续 */
             g->session.paused = !g->session.paused;
-            if (g->settings.sound_on) fc_sfx_play(FC_TONE_NAV);
+            if (g->settings.sound_on) {
+                if (voice_enabled(g)) {
+                    fc_voice_play(g->session.paused ? FC_CLIP_PAUSED
+                                                    : FC_CLIP_RESUMED);
+                } else {
+                    fc_sfx_play(FC_TONE_NAV);
+                }
+            }
         } else if (hit(x, y, 250, 400, 210, 60)) { /* 结束 */
-            if (g->settings.sound_on) fc_sfx_play(FC_TONE_BACK);
+            if (g->settings.sound_on && !voice_enabled(g)) {
+                fc_sfx_play(FC_TONE_BACK);
+            }
             session_finish(g);
             g->snap.page = FC_PAGE_RESULT;
         }
@@ -312,6 +373,14 @@ static void settings_tap(game_t *g, int32_t x, int32_t y)
     /* 音效开关（整行） */
     if (hit(x, y, 16, row_y, 448, 44)) {
         s->sound_on = !s->sound_on;
+        changed = true;
+    }
+    row_y += 52;
+    /* 语音报数模式（整行循环：关 → 每个 → 每5个） */
+    if (hit(x, y, 16, row_y, 448, 44)) {
+        s->voice_mode = (s->voice_mode == FC_VOICE_OFF) ? FC_VOICE_EVERY
+                        : (s->voice_mode == FC_VOICE_EVERY) ? FC_VOICE_FIFTH
+                                                             : FC_VOICE_OFF;
         changed = true;
     }
     row_y += 60;
@@ -437,6 +506,7 @@ void game_update(game_handle_t handle)
         fc_counter_feed(g->counter, &g->mbox[tail]);
         g->mbox_tail = (tail + 1) % FC_POSE_MBOX;
         g->session.last_sample_tick = g->snap.tick;
+        g->session.no_signal_fired = false; /* 回到镜头，重新武装提示 */
     }
 
     const bool streaming = g->snap.page == FC_PAGE_TRAIN && !g->session.paused;
@@ -456,16 +526,39 @@ void game_update(game_handle_t handle)
         fc_counter_feed(g->counter, &s);
     }
 
-    /* 计数反馈：音效 + 达标。 */
+    /* 计数反馈：语音报数 + 一次性鼓励短语 + 达标。 */
     const fc_stats_t *st = fc_counter_stats(g->counter);
     if (st->reps != g->snap.reps) {
-        g->snap.reps = st->reps;
-        if (g->settings.sound_on) fc_sfx_play(FC_TONE_REP);
+        const uint32_t reps = st->reps;
+        g->snap.reps = reps;
+        announce_rep(g, reps);
+        const uint32_t target = g->settings.target_reps;
+        if (g->settings.sound_on && target > 5 && reps == target - 5 &&
+            !g->session.five_left_fired) {
+            g->session.five_left_fired = true;
+            if (voice_enabled(g)) fc_voice_play(FC_CLIP_FIVE_LEFT);
+        }
+        if (g->settings.sound_on && target >= 10 && !g->session.halfway_fired &&
+            reps * 2 >= target && reps < target) {
+            g->session.halfway_fired = true;
+            if (voice_enabled(g)) fc_voice_play(FC_CLIP_HALFWAY);
+        }
     }
     if (!g->session.target_hit && g->settings.target_reps > 0 &&
         st->reps >= g->settings.target_reps && streaming) {
         g->session.target_hit = true;
-        if (g->settings.sound_on) fc_sfx_play(FC_TONE_TARGET);
+        if (voice_enabled(g)) {
+            fc_voice_play(FC_CLIP_TARGET_HIT);
+        } else if (g->settings.sound_on) {
+            fc_sfx_play(FC_TONE_TARGET);
+        }
+    }
+    /* 无信号：>8 秒没有有效样本，语音提醒一次（回到镜头重新武装）。 */
+    if (streaming && g->settings.mode != FC_MODE_DEMO &&
+        g->settings.sound_on && !g->session.no_signal_fired &&
+        (g->snap.tick - g->session.last_sample_tick) > 8u * 30u) {
+        g->session.no_signal_fired = true;
+        if (voice_enabled(g)) fc_voice_play(FC_CLIP_NO_SIGNAL);
     }
 
     g->snap.stage = (uint8_t)st->stage;
@@ -679,6 +772,20 @@ static void render_settings(game_t *g)
     draw_mixed("音效", 32, y + 14, C_DIM);
     draw_mixed(g->settings.sound_on ? "开" : "关", 300, y + 14,
                g->settings.sound_on ? C_GREEN : C_DIM);
+    y += 52;
+    /* 语音报数 */
+    panel(16, y, 448, 44, C_PANEL);
+    draw_mixed("语音报数", 32, y + 14, C_DIM);
+    {
+        const char *vname = "关";
+        Color vcolor = C_DIM;
+        if (g->settings.voice_mode == FC_VOICE_EVERY) { vname = "每个"; vcolor = C_GREEN; }
+        else if (g->settings.voice_mode == FC_VOICE_FIFTH) { vname = "每5个"; vcolor = C_GREEN; }
+        draw_mixed(vname, 300, y + 14, vcolor);
+        if (!fc_voice_available() && g->settings.voice_mode != FC_VOICE_OFF) {
+            draw_mixed("(无)", 380, y + 14, C_RED);
+        }
+    }
     y += 60;
     /* 重置网络 */
     panel(16, y, 448, 52, C_PANEL);

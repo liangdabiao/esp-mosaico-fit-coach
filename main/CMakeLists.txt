@@ -3,12 +3,15 @@ idf_component_register(
          "fc_sfx_device.c" "rtttl_player.c" "cJSON.c" "gk_cjk_font.c"
          "fc_camera.c" "fc_net.c" "fc_runtime.c"
          "fc_provider_http.c" "fc_provider_vlm.c"
-         "fc_time_device.c"
+         "fc_time_device.c" "fc_adpcm.c" "fc_voice.c"
     INCLUDE_DIRS "."
     REQUIRES mosaico_game_app mosaico_raylib_fast esp-gsp nvs_flash
              esp-mosaico-bsp esp_codec_dev mosaico_module_camera
     PRIV_REQUIRES esp_wifi esp_netif esp_event esp_http_server esp_http_client
                   esp_driver_jpeg esp_timer mbedtls esp_hw_support heap)
+
+# 语音反馈素材：edge-tts 生成的 111 条数字/短语，IMA-ADPCM 编码后内嵌。
+target_add_binary_data(${COMPONENT_LIB} "../assets/audio/fc_voice.bin" BINARY)
 
 # GSP needs an image to bind the Raylib framebuffer. This generated placeholder
 # is embedded in the application; no external game resource partition is used.

@@ -26,3 +26,6 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Voice source cache (regenerable from gen_voice.py, ~40MB of TTS intermediates)
+assets/audio/src/

@@ -9,6 +9,7 @@
     "main/fc_store_host.c",
     "main/fc_time_host.c",
     "main/fc_sfx_host.c",
-    "main/gk_cjk_font.c"
+    "main/gk_cjk_font.c",
+    "main/fc_voice_host.c"
   ]
 }

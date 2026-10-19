@@ -11,6 +11,7 @@ void fc_settings_defaults(fc_settings_t *settings)
     settings->mode = FC_MODE_DEMO;
     settings->target_reps = 30;
     settings->sound_on = 1;
+    settings->voice_mode = FC_VOICE_EVERY; /* 语音是训练中的主反馈通道 */
     settings->up_thresh = 110;   /* 需求文档默认阈值 */
     settings->down_thresh = 55;
 }
