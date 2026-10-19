@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 #define FC_VOICE_CLIP_COUNT 111
-#define FC_VOICE_SAMPLE_RATE 16000
+#define FC_VOICE_SAMPLE_RATE 24000
 
 /* 0..100：数字片段，id 与数值一一对应。 */
 #define FC_CLIP_NUM_MIN 0

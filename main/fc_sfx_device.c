@@ -20,6 +20,9 @@ int fc_sfx_start(void)
 {
     if (s_started) return 0;
     if (rtttl_player_start() != ESP_OK) return -1;
+    /* player_task 异步初始化 codec：等它就绪，返回值才真实
+     * （否则 fc_voice 紧跟的初始化会与它竞态抢 I2S0）。 */
+    if (!rtttl_player_wait_ready(2000)) return -1;
     s_started = 1;
     return 0;
 }

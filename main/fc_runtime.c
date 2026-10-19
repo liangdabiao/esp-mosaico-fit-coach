@@ -19,8 +19,10 @@
 #include "fc_count.h"
 #include "fc_net.h"
 #include "fc_provider.h"
+#include "fc_sfx.h"
 #include "fc_store.h"
 #include "fc_time.h"
+#include "fc_voice.h"
 
 static const char *TAG = "fc_runtime";
 
@@ -121,11 +123,21 @@ static void runtime_task(void *arg)
     (void)arg;
     uint32_t last_feed_ms = 0;
 
-    /* 网络启动推迟到引擎就绪之后（3s）：WiFi 依赖 NVS/事件循环，引擎链路
-     * 启动顺序竞态曾导致 app_main 阶段 abort（core dump 定位于
-     * start_portal 的 esp_wifi_init）。 */
+    /* 音频/网络都推迟到引擎就绪之后（3s）：app_main 阶段 BSP 的
+     * I2C/电源/NVS 未就绪——WiFi 提前起会 abort（core dump 定位过），
+     * codec 提前初始化会静默失败（整机无声）。音频先于网络：STA 连接
+     * 最长阻塞 30 秒，不能挡住开口说话。 */
     vTaskDelay(pdMS_TO_TICKS(3000));
     {
+        const bool sfx_ok = fc_sfx_start() == 0;
+        if (!sfx_ok) {
+            ESP_LOGW(TAG, "sfx unavailable; continuing silent");
+        }
+        if (fc_voice_start(sfx_ok) != 0) {
+            ESP_LOGW(TAG, "voice unavailable; beeps only");
+        } else {
+            ESP_LOGI(TAG, "audio ready (sfx=%d voice=1)", (int)sfx_ok);
+        }
         const esp_err_t err = fc_net_start();
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "net start failed: %s (demo mode continues)",

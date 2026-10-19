@@ -15,9 +15,10 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/event_groups.h"
 #include "freertos/task.h"
 
-#define RTTTL_SAMPLE_RATE   16000
+#define RTTTL_SAMPLE_RATE   24000 /* 与 fc_voice 一致：24k 在本机喇叭上才听得清（qiaopi 实测教训） */
 #define RTTTL_CHUNK_SAMPLES 256
 #define RTTTL_VOLUME        58
 #define RTTTL_AMPLITUDE     5200
@@ -25,6 +26,10 @@
 static const char *TAG = "rtttl";
 static QueueHandle_t s_queue;
 static TaskHandle_t s_task;
+/* Set by player_task after init (success or failure); bit1 = speaker OK. */
+static EventGroupHandle_t s_ready;
+#define RTTTL_READY_DONE BIT0
+#define RTTTL_READY_OK   BIT1
 static volatile uint32_t s_generation;
 static volatile bool s_playing;
 static esp_codec_dev_handle_t s_speaker;
@@ -209,6 +214,10 @@ static void player_task(void *arg) {
         }
     }
 
+    if (s_ready) {
+        xEventGroupSetBits(s_ready, RTTTL_READY_DONE | (s_speaker ? RTTTL_READY_OK : 0));
+    }
+
     rtttl_request_t request;
     for (;;) {
         if (xQueueReceive(s_queue, &request, portMAX_DELAY) == pdTRUE && request.song) {
@@ -219,8 +228,18 @@ static void player_task(void *arg) {
     }
 }
 
+bool rtttl_player_wait_ready(uint32_t timeout_ms)
+{
+    if (!s_ready) return false;
+    const EventBits_t bits = xEventGroupWaitBits(s_ready, RTTTL_READY_DONE, pdFALSE,
+                                                 pdTRUE, pdMS_TO_TICKS(timeout_ms));
+    return (bits & RTTTL_READY_DONE) && (bits & RTTTL_READY_OK);
+}
+
 esp_err_t rtttl_player_start(void) {
     if (s_task) return ESP_OK;
+    s_ready = xEventGroupCreate();
+    if (!s_ready) return ESP_ERR_NO_MEM;
     s_queue = xQueueCreate(4, sizeof(rtttl_request_t));
     if (!s_queue) return ESP_ERR_NO_MEM;
     if (xTaskCreate(player_task, "rtttl", 3072, NULL, 4, &s_task) != pdPASS) {

@@ -4,8 +4,6 @@
 #include "esp_check.h"
 #include "esp_log.h"
 #include "fc_runtime.h"
-#include "fc_sfx.h"
-#include "fc_voice.h"
 #include "game.h"
 #include "game_config.h"
 #include "mosaico_game_app.h"
@@ -47,17 +45,9 @@ void app_main(void)
 {
     const game_config_t config = {GAME_WIDTH, GAME_HEIGHT};
     ESP_ERROR_CHECK(game_create(&config, &s_game) ? ESP_OK : ESP_ERR_NO_MEM);
-    /* 音效失败不致命（静音继续）。语音与提示音共用 codec：提示音起来了
-     * 就不再重开，只补音量。 */
-    const bool sfx_ok = fc_sfx_start() == 0;
-    if (!sfx_ok) {
-        ESP_LOGW("fit_coach", "sfx unavailable; continuing silent");
-    }
-    if (fc_voice_start(sfx_ok) != 0) {
-        ESP_LOGW("fit_coach", "voice unavailable; beeps only");
-    }
-    /* 设备侧服务：WiFi/配网、摄像头、姿态 provider。失败不致命——应用
-     * 以演示模式继续运行，并在训练页显示链路状态。 */
+    /* 设备侧服务（音频/网络/摄像头）由 runtime 任务在引擎就绪后启动：
+     * app_main 阶段 BSP 的 I2C/电源还没就绪，提前初始化 codec 会静默
+     * 失败（与 WiFi 的 abort 崩溃同一类时序坑的静音版）。 */
     fc_runtime_start(s_game);
     /* The engine starts iris_ota_support_start() and marks the image healthy
      * after presenting its first frame; the OTA writer remains in Recovery. */

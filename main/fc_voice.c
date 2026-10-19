@@ -28,7 +28,7 @@ extern const uint8_t fc_voice_bin_start[] asm("_binary_fc_voice_bin_start");
 extern const uint8_t fc_voice_bin_end[] asm("_binary_fc_voice_bin_end");
 
 #define FC_VOICE_QUEUE_LEN 6
-#define FC_VOICE_CHUNK_SAMPLES 512
+#define FC_VOICE_CHUNK_SAMPLES 1024
 #define FC_VOICE_VOLUME 70
 
 /* blob 布局（与 gen_voice.py 的 render_blob 逐字段对应）。 */

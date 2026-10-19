@@ -44,7 +44,11 @@ HEADER_PATH = ROOT / "main" / "fc_voice_clips.h"
 FIXTURE_PATH = ROOT / "tests" / "fc_adpcm_fixture.h"
 
 VOICE = "zh-CN-XiaoxiaoNeural"
-SAMPLE_RATE = 16000
+# 24kHz 原生：edge-tts 输出即 24k，不做降采样。16k 在这台小喇叭上
+# 「发闷、模糊」（qiaopi 工程同硬件实测并退回的教训），听不清报数。
+SAMPLE_RATE = 24000
+# 语速微降：小喇叭重放快速数字时含混，稍慢显著提升可懂度。
+TTS_RATE = "-5%"
 
 # blob 头部：'FCVA' + u16 版本 + u16 片段数 + u32 采样率 + u4 保留（共 16 字节）。
 MAGIC = b"FCVA"
@@ -118,7 +122,7 @@ async def tts_one(ffmpeg, text: str, out: Path) -> None:
     tmp = out.with_suffix(".mp3")
     for attempt in range(3):
         try:
-            communicate = edge_tts.Communicate(text, VOICE)
+            communicate = edge_tts.Communicate(text, VOICE, rate=TTS_RATE)
             await communicate.save(str(tmp))
             if tmp.stat().st_size > 512:
                 break
@@ -363,7 +367,8 @@ async def build(ffmpeg, use_cache_only=False):
     wav_paths = []
     for clip_id, name, text in specs:
         digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
-        pcm = SRC_DIR / f"{name}_{digest}.pcm"
+        # 缓存名带采样率与语速：换采样率绝不复用旧缓存（会整体变调）。
+        pcm = SRC_DIR / f"r{SAMPLE_RATE}_{TTS_RATE.replace('%', 'p')}_{name}_{digest}.pcm"
         if not pcm.is_file() and use_cache_only:
             raise SystemExit(f"缓存缺 {name}（--check 模式不联网）")
         await tts_one(ffmpeg, text, pcm)
